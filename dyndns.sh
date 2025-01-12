@@ -4,11 +4,16 @@
 
 
 # Configuration
-DOMAINS="your-domain1.example.com your-domain2.example.com your-domain3.example.com"
-PASSWORD="your-password"
-LOG_FILE="/var/log/dyndns_update.log"
 WAN_INTERFACE="wan"
 WAN6_INTERFACE="wan6"
+
+IPV4_DOMAINS="your-domain1.example.com your-domain2.example.com your-domain3.example.com"
+# IPV6_MAPPINGS format: "domain/interface_id domain2/interface_id2"
+# Each entry consists of a domain name and its corresponding interface ID, separated by a slash.
+IPV6_MAPPINGS="your-domain1.example.com/1234 your-domain2.example.com/5678"
+
+DYNDNS_PASSWORD="your-password"
+LOG_FILE="/var/log/dyndns_update.log"
 
 # Function to log messages
 log_message() {
@@ -23,6 +28,16 @@ get_wan_ip() {
         exit 1
     fi
     echo "$wan_ip"
+}
+
+# Get current WAN6 IP address (using OpenWrt's ubus)
+get_wan6_ip() {
+    wan6_ip=$(ubus call network.interface.${WAN6_INTERFACE} status | jq -r '.["ipv6-address"][0].address')
+    if [ -z "$wan6_ip" ]; then
+        log_message "Error: Could not determine WAN6 IP address"
+        exit 1
+    fi
+    echo "$wan6_ip"
 }
 
 # Get current WAN6 prefix (using OpenWrt's ubus)
@@ -68,7 +83,7 @@ get_dns_ip() {
 do_curl_update() {
     domain="$1"
     current_ip="$2"
-    update_url="https://dynamicdns.provider.com/update?hostname=${domain}&password=${PASSWORD}"
+    update_url="https://dynamicdns.provider.com/update?hostname=${domain}&password=${DYNDNS_PASSWORD}"
     
     response=$(curl -s "$update_url")
     return_code=$?
@@ -82,58 +97,121 @@ do_curl_update() {
     fi
 }
 
-# Update DynDNS record for multiple domains
-update_dyndns() {
-    current_ip="$1"
+# Common update logic for both IPv4 and IPv6
+update_domains() {
+    ip_version="$1"        # "IPv4" or "IPv6"
+    current_ip="$2"        # Current WAN IP or prefix
+    domains_to_update="$3" # Space-separated list of domains
     success=0
     failed=0
     
-    # Loop through each domain and update
-    for domain in $DOMAINS; do
-        if do_curl_update "$domain" "$current_ip"; then
-            success=$((success + 1))
+    if [ -n "$domains_to_update" ]; then
+        log_message "Updating $ip_version records for the following domains: $domains_to_update"
+        for domain in $domains_to_update; do
+            if [ "$ip_version" = "IPv6" ]; then
+                # Get interface_id for this domain and construct full IPv6 address
+                interface_id=$(echo "$domain" | cut -d'/' -f2)
+                domain=$(echo "$domain" | cut -d'/' -f1)
+                full_ip=$(echo "$current_ip" | cut -d'/' -f1)::${interface_id}
+                if do_curl_update "$domain" "$full_ip"; then
+                    success=$((success + 1))
+                else
+                    failed=$((failed + 1))
+                fi
+            else
+                if do_curl_update "$domain" "$current_ip"; then
+                    success=$((success + 1))
+                else
+                    failed=$((failed + 1))
+                fi
+            fi
+        done
+        
+        # Log summary of updates
+        if [ $failed -eq 0 ]; then
+            log_message "All ${success} $ip_version domain(s) updated successfully"
+            return 0
         else
-            failed=$((failed + 1))
+            log_message "$ip_version update completed with ${success} successful and ${failed} failed updates"
+            return 1
         fi
-    done
-    
-    # Return success only if all updates succeeded
-    if [ $failed -eq 0 ]; then
-        log_message "All ${success} domain(s) updated successfully"
-        return 0
     else
-        log_message "Update completed with ${success} successful and ${failed} failed updates"
-        return 1
+        log_message "All $ip_version domains are up to date"
+        return 0
     fi
 }
 
-# Main logic
-main() {
+# IPv4 main logic
+main4() {
     wan_ip=$(get_wan_ip)
-    update_needed=0
     domains_to_update=""
     
     # Check each domain's current IP
-    for domain in $DOMAINS; do
-        dns_ip=$(get_dns_ip "$domain")
+    for domain in $IPV4_DOMAINS; do
+        dns_ip=$(get_dns_ip "$domain" "A")
         
         if [ "$wan_ip" = "$dns_ip" ]; then
             log_message "IP addresses match for ${domain} (${wan_ip}). No update needed."
         else
             log_message "IP mismatch detected for ${domain} - WAN IP: ${wan_ip}, DNS IP: ${dns_ip}"
-            update_needed=1
             domains_to_update="$domains_to_update $domain"
         fi
     done
     
-    # Update only the domains that need it
-    if [ $update_needed -eq 1 ]; then
-        for domain in $domains_to_update; do
-            do_curl_update "$domain" "$wan_ip"
-        done
-    else
-        log_message "All domains are up to date"
+    update_domains "IPv4" "$wan_ip" "$domains_to_update"
+    return $?
+}
+
+# IPv6 main logic
+main6() {
+    wan6_prefix=$(get_wan6_prefix)
+    domains_to_update=""
+    
+    # Check each domain's current IPv6
+    for ipv6_entry in $IPV6_MAPPINGS; do
+        domain=$(echo "$ipv6_entry" | cut -d'/' -f1)
+        interface_id=$(echo "$ipv6_entry" | cut -d'/' -f2)
+        dns_ip=$(get_dns_ip "$domain" "AAAA")
+        
+        # Extract prefix from DNS AAAA record (everything before last 4 segments)
+        dns_prefix=$(echo "$dns_ip" | sed -E 's/:[^:]*:[^:]*:[^:]*:[^:]*$//')
+        
+        # Extract prefix from WAN6 prefix (remove prefix length)
+        current_prefix=$(echo "$wan6_prefix" | cut -d'/' -f1)
+        
+        if [ "$current_prefix" = "$dns_prefix" ]; then
+            log_message "IPv6 prefixes match for ${domain} (${current_prefix}). No update needed."
+        else
+            log_message "IPv6 prefix mismatch detected for ${domain} - WAN prefix: ${current_prefix}, DNS prefix: ${dns_prefix}"
+            domains_to_update="$domains_to_update $domain"
+        fi
+    done
+    
+    update_domains "IPv6" "$wan6_prefix" "$domains_to_update"
+    return $?
+}
+
+# Main logic
+main() {
+    main4_result=0
+    main6_result=0
+    
+    # Run IPv4 updates
+    main4
+    main4_result=$?
+    
+    # Run IPv6 updates
+    main6
+    main6_result=$?
+    
+    # Return failure if either update failed
+    if [ $main4_result -ne 0 ] || [ $main6_result -ne 0 ]; then
+        log_message "Updates completed with errors"
+        return 1
     fi
+    
+    log_message "All updates completed successfully"
+    return 0
 }
 
 # Run main function
