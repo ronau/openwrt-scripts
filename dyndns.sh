@@ -12,6 +12,9 @@ IPV4_DOMAINS="your-domain1.example.com your-domain2.example.com your-domain3.exa
 # Each entry consists of a domain name and its corresponding interface ID, separated by a slash.
 IPV6_MAPPINGS="your-domain1.example.com/1234 your-domain2.example.com/5678"
 
+# IPV6_DOMAINS: List of domains that should point to the WAN6 interface's IPv6 address
+IPV6_DOMAINS="ipv6.example.com ipv6.example2.com"
+
 DYNDNS_PASSWORD="your-password"
 LOG_FILE="/var/log/dyndns_update.log"
 
@@ -99,44 +102,47 @@ do_curl_update() {
 
 # Common update logic for both IPv4 and IPv6
 update_domains() {
-    ip_version="$1"        # "IPv4" or "IPv6"
+    ip_type="$1"          # "v4" or "v6" or "v6_prefix"
     current_ip="$2"        # Current WAN IP or prefix
     domains_to_update="$3" # Space-separated list of domains
     success=0
     failed=0
     
     if [ -n "$domains_to_update" ]; then
-        log_message "Updating $ip_version records for the following domains: $domains_to_update"
+        log_message "Updating $ip_type records for the following domains: $domains_to_update"
         for domain in $domains_to_update; do
-            if [ "$ip_version" = "IPv6" ]; then
-                # Get interface_id for this domain and construct full IPv6 address
-                interface_id=$(echo "$domain" | cut -d'/' -f2)
-                domain=$(echo "$domain" | cut -d'/' -f1)
-                full_ip=$(echo "$current_ip" | cut -d'/' -f1)::${interface_id}
-                if do_curl_update "$domain" "$full_ip"; then
-                    success=$((success + 1))
-                else
-                    failed=$((failed + 1))
-                fi
-            else
-                if do_curl_update "$domain" "$current_ip"; then
-                    success=$((success + 1))
-                else
-                    failed=$((failed + 1))
-                fi
-            fi
+            case "$ip_type" in
+                "v4"|"v6")  # separate this, if v4 and v6 need to be updated differently
+                    if do_curl_update "$domain" "$current_ip"; then
+                        success=$((success + 1))
+                    else
+                        failed=$((failed + 1))
+                    fi
+                    ;;
+                "v6_prefix")
+                    # Get interface_id for this domain and construct full IPv6 address
+                    interface_id=$(echo "$domain" | cut -d'/' -f2)
+                    domain=$(echo "$domain" | cut -d'/' -f1)
+                    full_ip=$(echo "$current_ip" | cut -d'/' -f1)::${interface_id}
+                    if do_curl_update "$domain" "$full_ip"; then
+                        success=$((success + 1))
+                    else
+                        failed=$((failed + 1))
+                    fi
+                    ;;
+            esac
         done
         
         # Log summary of updates
         if [ $failed -eq 0 ]; then
-            log_message "All ${success} $ip_version domain(s) updated successfully"
+            log_message "All ${success} $ip_type domain(s) updated successfully"
             return 0
         else
-            log_message "$ip_version update completed with ${success} successful and ${failed} failed updates"
+            log_message "$ip_type update completed with ${success} successful and ${failed} failed updates"
             return 1
         fi
     else
-        log_message "All $ip_version domains are up to date"
+        log_message "All $ip_type domains are up to date"
         return 0
     fi
 }
@@ -158,16 +164,18 @@ main4() {
         fi
     done
     
-    update_domains "IPv4" "$wan_ip" "$domains_to_update"
+    update_domains "v4" "$wan_ip" "$domains_to_update"
     return $?
 }
 
 # IPv6 main logic
 main6() {
     wan6_prefix=$(get_wan6_prefix)
-    domains_to_update=""
+    wan6_ip=$(get_wan6_ip)
+    domains_to_update_prefix=""
+    domains_to_update_ip=""
     
-    # Check each domain's current IPv6
+    # Check each domain's current IPv6 prefix mapping
     for ipv6_entry in $IPV6_MAPPINGS; do
         domain=$(echo "$ipv6_entry" | cut -d'/' -f1)
         interface_id=$(echo "$ipv6_entry" | cut -d'/' -f2)
@@ -183,11 +191,40 @@ main6() {
             log_message "IPv6 prefixes match for ${domain} (${current_prefix}). No update needed."
         else
             log_message "IPv6 prefix mismatch detected for ${domain} - WAN prefix: ${current_prefix}, DNS prefix: ${dns_prefix}"
-            domains_to_update="$domains_to_update $domain"
+            domains_to_update_prefix="$domains_to_update_prefix $ipv6_entry"
         fi
     done
     
-    update_domains "IPv6" "$wan6_prefix" "$domains_to_update"
+    # Check each domain that should point to WAN6 IP
+    for domain in $IPV6_DOMAINS; do
+        dns_ip=$(get_dns_ip "$domain" "AAAA")
+        
+        if [ "$wan6_ip" = "$dns_ip" ]; then
+            log_message "IPv6 addresses match for ${domain} (${wan6_ip}). No update needed."
+        else
+            log_message "IPv6 address mismatch detected for ${domain} - WAN IP: ${wan6_ip}, DNS IP: ${dns_ip}"
+            domains_to_update_ip="$domains_to_update_ip $domain"
+        fi
+    done
+    
+    # Update domains with prefix mappings
+    if [ -n "$domains_to_update_prefix" ]; then
+        update_domains "v6_prefix" "$wan6_prefix" "$domains_to_update_prefix"
+        prefix_update_result=$?
+    else
+        prefix_update_result=0
+    fi
+    
+    # Update domains with direct IP
+    if [ -n "$domains_to_update_ip" ]; then
+        update_domains "v6" "$wan6_ip" "$domains_to_update_ip"
+        ip_update_result=$?
+    else
+        ip_update_result=0
+    fi
+    
+    # Return failure if either update failed
+    [ $prefix_update_result -eq 0 ] && [ $ip_update_result -eq 0 ]
     return $?
 }
 
