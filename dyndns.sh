@@ -168,12 +168,10 @@ main4() {
     return $?
 }
 
-# IPv6 main logic
-main6() {
+# IPv6 prefix mapping logic
+main6_prefix() {
     wan6_prefix=$(get_wan6_prefix)
-    wan6_ip=$(get_wan6_ip)
     domains_to_update_prefix=""
-    domains_to_update_ip=""
     
     # Check each domain's current IPv6 prefix mapping
     for ipv6_entry in $IPV6_MAPPINGS; do
@@ -195,6 +193,19 @@ main6() {
         fi
     done
     
+    # Update domains with prefix mappings
+    if [ -n "$domains_to_update_prefix" ]; then
+        update_domains "v6_prefix" "$wan6_prefix" "$domains_to_update_prefix"
+        return $?
+    fi
+    return 0
+}
+
+# IPv6 direct IP logic
+main6_ip() {
+    wan6_ip=$(get_wan6_ip)
+    domains_to_update_ip=""
+    
     # Check each domain that should point to WAN6 IP
     for domain in $IPV6_DOMAINS; do
         dns_ip=$(get_dns_ip "$domain" "AAAA")
@@ -207,48 +218,28 @@ main6() {
         fi
     done
     
-    # Update domains with prefix mappings
-    if [ -n "$domains_to_update_prefix" ]; then
-        update_domains "v6_prefix" "$wan6_prefix" "$domains_to_update_prefix"
-        prefix_update_result=$?
-    else
-        prefix_update_result=0
-    fi
-    
     # Update domains with direct IP
     if [ -n "$domains_to_update_ip" ]; then
         update_domains "v6" "$wan6_ip" "$domains_to_update_ip"
-        ip_update_result=$?
-    else
-        ip_update_result=0
+        return $?
     fi
-    
-    # Return failure if either update failed
-    [ $prefix_update_result -eq 0 ] && [ $ip_update_result -eq 0 ]
-    return $?
+    return 0
 }
 
 # Main logic
 main() {
-    main4_result=0
-    main6_result=0
-    
-    # Run IPv4 updates
     main4
     main4_result=$?
     
-    # Run IPv6 updates
-    main6
-    main6_result=$?
+    main6_prefix
+    main6_prefix_result=$?
     
-    # Return failure if either update failed
-    if [ $main4_result -ne 0 ] || [ $main6_result -ne 0 ]; then
-        log_message "Updates completed with errors"
-        return 1
-    fi
+    main6_ip
+    main6_ip_result=$?
     
-    log_message "All updates completed successfully"
-    return 0
+    # Return failure if any update failed
+    [ $main4_result -eq 0 ] && [ $main6_prefix_result -eq 0 ] && [ $main6_ip_result -eq 0 ]
+    return $?
 }
 
 # Run main function
