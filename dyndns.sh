@@ -27,6 +27,9 @@ CURL_OPTS="-sS"
 
 LOG_FILE="/var/log/dyndns_update.log"
 
+# Dry run flag (set by command line argument)
+DRY_RUN=0
+
 
 
 
@@ -100,15 +103,20 @@ do_curl_update() {
     current_ip="$2"
     update_url=$(echo "$DYNDNS_URL_TEMPLATE" | sed "s/%domain%/${domain}/g; s/%ip%/${current_ip}/g")
     
-    response=$(curl $CURL_OPTS "$update_url")
-    return_code=$?
-    
-    if [ $return_code -eq 0 ]; then
-        log_message "Successfully updated DynDNS record for ${domain} to ${current_ip}. Response: ${response}"
+    if [ $DRY_RUN -eq 1 ]; then
+        echo "DRY RUN: curl $CURL_OPTS \"$update_url\""
         return 0
     else
-        log_message "Failed to update DynDNS record for ${domain}: ${response}"
-        return 1
+        response=$(curl $CURL_OPTS "$update_url")
+        return_code=$?
+        
+        if [ $return_code -eq 0 ]; then
+            log_message "Successfully updated DynDNS record for ${domain} to ${current_ip}. Response: ${response}"
+            return 0
+        else
+            log_message "Failed to update DynDNS record for ${domain}: ${response}"
+            return 1
+        fi
     fi
 }
 
@@ -332,6 +340,10 @@ case "$1" in
     "test")
         shift
         test_mode "$@"
+        ;;
+    "dry-run")
+        DRY_RUN=1
+        main
         ;;
     *)
         main
