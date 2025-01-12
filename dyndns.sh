@@ -254,5 +254,86 @@ main() {
     return $?
 }
 
-# Run main function
-main
+# Test functions
+test_get_wan_ip() {
+    echo "Testing get_wan_ip..."
+    ip=$(get_wan_ip)
+    echo "WAN IP: $ip"
+}
+
+test_get_wan6_ip() {
+    echo "Testing get_wan6_ip..."
+    ip=$(get_wan6_ip)
+    echo "WAN6 IP: $ip"
+}
+
+test_get_wan6_prefix() {
+    echo "Testing get_wan6_prefix..."
+    prefix=$(get_wan6_prefix)
+    echo "WAN6 prefix: $prefix"
+}
+
+test_get_dns_ip() {
+    if [ -z "$1" ]; then
+        echo "Usage: $0 test_get_dns_ip <domain> [A|AAAA]"
+        return 1
+    fi
+    domain="$1"
+    record="${2:-A}"  # Default to A record if not specified
+    echo "Testing get_dns_ip for $domain ($record)..."
+    ip=$(get_dns_ip "$domain" "$record")
+    echo "DNS IP: $ip"
+}
+
+test_do_curl_update() {
+    if [ -z "$2" ]; then
+        echo "Usage: $0 test_do_curl_update <domain> <ip>"
+        return 1
+    fi
+    domain="$1"
+    ip="$2"
+    echo "Testing do_curl_update for $domain with IP $ip..."
+    do_curl_update "$domain" "$ip"
+    echo "Return code: $?"
+}
+
+# Test mode handler
+test_mode() {
+    case "$1" in
+        "get_wan_ip")
+            test_get_wan_ip
+            ;;
+        "get_wan6_ip")
+            test_get_wan6_ip
+            ;;
+        "get_wan6_prefix")
+            test_get_wan6_prefix
+            ;;
+        "get_dns_ip")
+            test_get_dns_ip "$2" "$3"
+            ;;
+        "do_curl_update")
+            test_do_curl_update "$2" "$3"
+            ;;
+        *)
+            echo "Available test functions:"
+            echo "  get_wan_ip        - Test WAN IP detection"
+            echo "  get_wan6_ip       - Test WAN6 IP detection"
+            echo "  get_wan6_prefix   - Test WAN6 prefix detection"
+            echo "  get_dns_ip        - Test DNS IP resolution (args: domain [A|AAAA])"
+            echo "  do_curl_update    - Test update URL call (args: domain ip)"
+            return 1
+            ;;
+    esac
+}
+
+# Main script logic
+case "$1" in
+    "test")
+        shift
+        test_mode "$@"
+        ;;
+    *)
+        main
+        ;;
+esac
