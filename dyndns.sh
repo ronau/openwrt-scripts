@@ -8,6 +8,7 @@ WAN_INTERFACE="wan"
 WAN6_INTERFACE="wan6"
 
 IPV4_DOMAINS="your-domain1.example.com your-domain2.example.com your-domain3.example.com"
+
 # IPV6_MAPPINGS format: "domain/interface_id domain2/interface_id2"
 # Each entry consists of a domain name and its corresponding interface ID, separated by a slash.
 IPV6_MAPPINGS="your-domain1.example.com/1234 your-domain2.example.com/5678"
@@ -15,8 +16,19 @@ IPV6_MAPPINGS="your-domain1.example.com/1234 your-domain2.example.com/5678"
 # IPV6_DOMAINS: List of domains that should point to the WAN6 interface's IPv6 address
 IPV6_DOMAINS="ipv6.example.com ipv6.example2.com"
 
+# Update URL template. Use %domain% and %ip% as placeholders
+DYNDNS_URL_TEMPLATE="https://dynamicdns.provider.com/update?username=${DYNDNS_USERNAME}&password=${DYNDNS_PASSWORD}&hostname=%domain%&myip=%ip%"
+DYNDNS_USERNAME="your-username"
 DYNDNS_PASSWORD="your-password"
+
+# Additional curl parameters (e.g. "-k" to allow insecure connections, "-4" to force IPv4)
+# Used when calling DynDNS Update URL
+CURL_OPTS="-sS"
+
 LOG_FILE="/var/log/dyndns_update.log"
+
+
+
 
 # Function to log messages
 log_message() {
@@ -86,13 +98,13 @@ get_dns_ip() {
 do_curl_update() {
     domain="$1"
     current_ip="$2"
-    update_url="https://dynamicdns.provider.com/update?hostname=${domain}&password=${DYNDNS_PASSWORD}"
+    update_url=$(echo "$DYNDNS_URL_TEMPLATE" | sed "s/%domain%/${domain}/g; s/%ip%/${current_ip}/g")
     
-    response=$(curl -s "$update_url")
+    response=$(curl $CURL_OPTS "$update_url")
     return_code=$?
     
     if [ $return_code -eq 0 ]; then
-        log_message "Successfully updated DynDNS record for ${domain} to ${current_ip}"
+        log_message "Successfully updated DynDNS record for ${domain} to ${current_ip}. Response: ${response}"
         return 0
     else
         log_message "Failed to update DynDNS record for ${domain}: ${response}"
