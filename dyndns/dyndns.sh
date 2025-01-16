@@ -7,14 +7,15 @@
 WAN_INTERFACE="wan"
 WAN6_INTERFACE="wan6"
 
-IPV4_DOMAINS="your-domain1.example.com your-domain2.example.com your-domain3.example.com"
+# IPV4_DOMAINS: List of domains that should point to the WAN interface's IPv4 address
+IPV4_DOMAINS="mydomain1.tld mydomain2.tld mydomain3.tld"
+
+# IPV6_DOMAINS: List of domains that should point to the WAN6 interface's IPv6 address
+IPV6_DOMAINS="mydomain1.tld mydomain2.tld mydomain3.tld"
 
 # IPV6_MAPPINGS format: "domain/interface_id domain2/interface_id2"
 # Each entry consists of a domain name and its corresponding interface ID, separated by a slash.
-IPV6_MAPPINGS="your-domain1.example.com/1234 your-domain2.example.com/5678"
-
-# IPV6_DOMAINS: List of domains that should point to the WAN6 interface's IPv6 address
-IPV6_DOMAINS="ipv6.example.com ipv6.example2.com"
+IPV6_MAPPINGS="host1.mydomain1.tld/1234:45ff:fe67:890a host2.mydomain1.tld/5678:90ff:feab:cdef"
 
 # Update URL template. Use %domain% and %ip% as placeholders
 DYNDNS_URL_TEMPLATE="https://dynamicdns.provider.com/update?username=${DYNDNS_USERNAME}&password=${DYNDNS_PASSWORD}&hostname=%domain%&myip=%ip%"
@@ -184,8 +185,12 @@ main4() {
         fi
     done
     
-    update_domains "v4" "$wan_ip" "$domains_to_update"
-    return $?
+    # Update domains with IPv4 addresses
+    if [ -n "$domains_to_update" ]; then
+        update_domains "v4" "$wan_ip" "$domains_to_update"
+        return $?
+    fi
+    return 0
 }
 
 # IPv6 prefix mapping logic
