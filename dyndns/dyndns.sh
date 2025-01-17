@@ -271,19 +271,34 @@ main() {
 test_get_wan_ip() {
     echo "Testing get_wan_ip..."
     ip=$(get_wan_ip)
+    return_code=$?
     echo "WAN IP: $ip"
+    if [ $return_code -ne 0 ]; then
+        echo "ERROR: Function returned $return_code"
+        return $return_code
+    fi
 }
 
 test_get_wan6_ip() {
     echo "Testing get_wan6_ip..."
     ip=$(get_wan6_ip)
+    return_code=$?
     echo "WAN6 IP: $ip"
+    if [ $return_code -ne 0 ]; then
+        echo "ERROR: Function returned $return_code"
+        return $return_code
+    fi
 }
 
 test_get_wan6_prefix() {
     echo "Testing get_wan6_prefix..."
     prefix=$(get_wan6_prefix)
+    return_code=$?
     echo "WAN6 prefix: $prefix"
+    if [ $return_code -ne 0 ]; then
+        echo "ERROR: Function returned $return_code"
+        return $return_code
+    fi
 }
 
 test_get_dns_ip() {
@@ -295,7 +310,12 @@ test_get_dns_ip() {
     record="${2:-A}"  # Default to A record if not specified
     echo "Testing get_dns_ip for $domain ($record)..."
     ip=$(get_dns_ip "$domain" "$record")
+    return_code=$?
     echo "DNS IP: $ip"
+    if [ $return_code -ne 0 ]; then
+        echo "ERROR: Function returned $return_code"
+        return $return_code
+    fi
 }
 
 test_do_curl_update() {
