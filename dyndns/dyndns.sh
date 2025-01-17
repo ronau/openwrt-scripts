@@ -153,7 +153,7 @@ update_domains() {
                     # Get interface_id for this domain and construct full IPv6 address
                     interface_id=$(echo "$domain" | cut -d'/' -f2)
                     domain=$(echo "$domain" | cut -d'/' -f1)
-                    full_ip=$(echo "$current_ip" | cut -d'/' -f1)::${interface_id}
+                    full_ip=$(echo "$current_ip" | cut -d'/' -f1):${interface_id}
                     if do_curl_update "$domain" "$full_ip"; then
                         success=$((success + 1))
                     else
@@ -254,7 +254,7 @@ main6_prefix() {
     
     # Update domains with prefix mappings
     if [ -n "$domains_to_update_prefix" ]; then
-        update_domains "v6_prefix" "$wan6_prefix" "$domains_to_update_prefix"
+        update_domains "v6_prefix" "$current_prefix" "$domains_to_update_prefix"
         return $?
     fi
     return 0
