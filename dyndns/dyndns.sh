@@ -80,10 +80,10 @@ get_dns_ip() {
     
     case "$record_type" in
         "A")
-            dns_ip=$(nslookup -type=A "$domain" 2>/dev/null | grep "Address:" | tail -n1 | awk '{print $2}')
+            dns_ip=$(nslookup -type=A "$domain" 2>/dev/null | grep -A1 "^Name:" | grep "^Address:" | awk '{print $2}')
             ;;
         "AAAA")
-            dns_ip=$(nslookup -type=AAAA "$domain" 2>/dev/null | grep "Address:" | tail -n1 | awk '{print $2}')
+            dns_ip=$(nslookup -type=AAAA "$domain" 2>/dev/null | grep -A1 "^Name:" | grep "^Address:" | awk '{print $2}')
             ;;
         *)
             log_message "Error: Invalid record type '$record_type'. Must be 'A' or 'AAAA'"
