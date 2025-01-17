@@ -105,18 +105,26 @@ do_curl_update() {
     update_url=$(echo "$DYNDNS_URL_TEMPLATE" | sed "s/%domain%/${domain}/g; s/%ip%/${current_ip}/g")
     
     if [ $DRY_RUN -eq 1 ]; then
-        echo "DRY RUN: curl $CURL_OPTS \"$update_url\""
+        echo "DRY RUN: curl -w \"\\n%{http_code}\" $CURL_OPTS \"$update_url\""
         return 0
     else
-        response=$(curl $CURL_OPTS "$update_url")
+        # Use -w to get HTTP status code
+        response=$(curl -w "\n%{http_code}" $CURL_OPTS "$update_url")
         return_code=$?
         
-        if [ $return_code -eq 0 ]; then
-            log_message "Successfully updated DynDNS record for ${domain} to ${current_ip}. Response: ${response}"
-            return 0
-        else
-            log_message "Failed to update DynDNS record for ${domain}: ${response}"
+        # Extract status code (last line) and response body
+        http_code=$(echo "$response" | tail -n1)
+        response_body=$(echo "$response" | sed '$d')
+        
+        if [ $return_code -ne 0 ]; then
+            log_message "Error: curl failed for ${domain} with return code ${return_code}"
+            return $return_code
+        elif [ "$http_code" != "200" ]; then
+            log_message "Error: update failed for ${domain} with HTTP status ${http_code}: ${response_body}"
             return 1
+        else
+            log_message "Successfully updated ${domain} to IP ${current_ip}"
+            return 0
         fi
     fi
 }
