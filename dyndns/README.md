@@ -73,6 +73,13 @@ CURL_OPTS="-sS" # Curl options
 LOG_FILE="/var/log/dyndns_update.log" # Log file location
 ```
 
+Depending on your individual setup, the following additional curl options might be useful:
+
+```sh
+--interface pppoe-wan --capath /etc/ssl/certs
+```
+
+
 ## Usage
 
 ### Normal Operation
