@@ -215,8 +215,8 @@ main6_prefix() {
         # Extract prefix from DNS AAAA record (everything before last 4 segments)
         dns_prefix=$(echo "$dns_ip" | sed -E 's/:[^:]*:[^:]*:[^:]*:[^:]*$//')
         
-        # Extract prefix from WAN6 prefix (remove prefix length)
-        current_prefix=$(echo "$wan6_prefix" | cut -d'/' -f1)
+        # Extract prefix from WAN6 prefix (remove prefix length and trailing colons)
+        current_prefix=$(echo "$wan6_prefix" | cut -d'/' -f1 | sed 's/::$//')
         
         if [ "$current_prefix" = "$dns_prefix" ]; then
             log_message "IPv6 prefixes match for ${domain} (${current_prefix}). No update needed."
