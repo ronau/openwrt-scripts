@@ -17,10 +17,10 @@ IPV6_DOMAINS="mydomain1.tld mydomain2.tld mydomain3.tld"
 # Each entry consists of a domain name and its corresponding interface ID, separated by a slash.
 IPV6_MAPPINGS="host1.mydomain1.tld/1234:45ff:fe67:890a host2.mydomain1.tld/5678:90ff:feab:cdef"
 
-# Update URL template. Use %domain% and %ip% as placeholders
-DYNDNS_URL_TEMPLATE="https://dynamicdns.provider.com/update?username=${DYNDNS_USERNAME}&password=${DYNDNS_PASSWORD}&hostname=%domain%&myip=%ip%"
 DYNDNS_USERNAME="your-username"
 DYNDNS_PASSWORD="your-password"
+# Update URL template. Use %domain% and %ip% as placeholders
+DYNDNS_URL_TEMPLATE="https://dynamicdns.provider.com/update?username=${DYNDNS_USERNAME}&password=${DYNDNS_PASSWORD}&hostname=%domain%&myip=%ip%"
 
 # Additional curl parameters (e.g. "-k" to allow insecure connections, "-4" to force IPv4)
 # Used when calling DynDNS Update URL
