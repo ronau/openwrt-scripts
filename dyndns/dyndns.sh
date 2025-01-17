@@ -106,6 +106,7 @@ do_curl_update() {
     
     if [ $DRY_RUN -eq 1 ]; then
         echo "DRY RUN: curl -w \"\\n%{http_code}\" $CURL_OPTS \"$update_url\""
+        log_message "DRY RUN: curl -w \"\\n%{http_code}\" $CURL_OPTS \"$update_url\""
         return 0
     else
         # Use -w to get HTTP status code
@@ -201,6 +202,31 @@ main4() {
     return 0
 }
 
+# IPv6 direct IP logic
+main6_ip() {
+    wan6_ip=$(get_wan6_ip)
+    domains_to_update_ip=""
+    
+    # Check each domain that should point to WAN6 IP
+    for domain in $IPV6_DOMAINS; do
+        dns_ip=$(get_dns_ip "$domain" "AAAA")
+        
+        if [ "$wan6_ip" = "$dns_ip" ]; then
+            log_message "IPv6 addresses match for ${domain} (${wan6_ip}). No update needed."
+        else
+            log_message "IPv6 address mismatch detected for ${domain} - WAN IP: ${wan6_ip}, DNS IP: ${dns_ip}"
+            domains_to_update_ip="$domains_to_update_ip $domain"
+        fi
+    done
+    
+    # Update domains with direct IP
+    if [ -n "$domains_to_update_ip" ]; then
+        update_domains "v6" "$wan6_ip" "$domains_to_update_ip"
+        return $?
+    fi
+    return 0
+}
+
 # IPv6 prefix mapping logic
 main6_prefix() {
     wan6_prefix=$(get_wan6_prefix)
@@ -234,44 +260,19 @@ main6_prefix() {
     return 0
 }
 
-# IPv6 direct IP logic
-main6_ip() {
-    wan6_ip=$(get_wan6_ip)
-    domains_to_update_ip=""
-    
-    # Check each domain that should point to WAN6 IP
-    for domain in $IPV6_DOMAINS; do
-        dns_ip=$(get_dns_ip "$domain" "AAAA")
-        
-        if [ "$wan6_ip" = "$dns_ip" ]; then
-            log_message "IPv6 addresses match for ${domain} (${wan6_ip}). No update needed."
-        else
-            log_message "IPv6 address mismatch detected for ${domain} - WAN IP: ${wan6_ip}, DNS IP: ${dns_ip}"
-            domains_to_update_ip="$domains_to_update_ip $domain"
-        fi
-    done
-    
-    # Update domains with direct IP
-    if [ -n "$domains_to_update_ip" ]; then
-        update_domains "v6" "$wan6_ip" "$domains_to_update_ip"
-        return $?
-    fi
-    return 0
-}
-
 # Main logic
 main() {
     main4
     main4_result=$?
     
-    main6_prefix
-    main6_prefix_result=$?
-    
     main6_ip
     main6_ip_result=$?
     
+    main6_prefix
+    main6_prefix_result=$?
+    
     # Return failure if any update failed
-    [ $main4_result -eq 0 ] && [ $main6_prefix_result -eq 0 ] && [ $main6_ip_result -eq 0 ]
+    [ $main4_result -eq 0 ] && [ $main6_ip_result -eq 0 ] && [ $main6_prefix_result -eq 0 ]
     return $?
 }
 
