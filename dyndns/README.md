@@ -61,9 +61,9 @@ Use empty strings for the functionality you don't need (e.g. if you don't have a
 ### DynDNS Provider Settings
 
 ```sh
-DYNDNS_URL_TEMPLATE="https://dynamicdns.provider.com/update?username=${DYNDNS_USERNAME}&password=${DYNDNS_PASSWORD}&hostname=%domain%&myip=%ip%"
 DYNDNS_USERNAME="your-username"
 DYNDNS_PASSWORD="your-password"
+DYNDNS_URL_TEMPLATE="https://dynamicdns.provider.com/update?username=${DYNDNS_USERNAME}&password=${DYNDNS_PASSWORD}&hostname=%domain%&myip=%ip%"
 ```
 
 ### Additional Settings
