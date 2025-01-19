@@ -63,12 +63,12 @@ get_wan6_ip() {
 get_wan6_prefix() {
     prefix=$(ubus call network.interface.${WAN6_INTERFACE} status | jq -r '.["ipv6-prefix"][0].address')
     prefix_length=$(ubus call network.interface.${WAN6_INTERFACE} status | jq -r '.["ipv6-prefix"][0].mask')
-    
+
     if [ -z "$prefix" ] || [ -z "$prefix_length" ]; then
         log_message "Error: Could not determine WAN6 prefix"
         exit 1
     fi
-    
+
     # Return the prefix with its length
     echo "${prefix}/${prefix_length}"
 }
@@ -77,7 +77,7 @@ get_wan6_prefix() {
 get_dns_ip() {
     domain="$1"
     record_type="$2"  # "A" or "AAAA"
-    
+
     case "$record_type" in
         "A")
             dns_ip=$(nslookup -type=A "$domain" 2>/dev/null | grep -A1 "^Name:" | grep "^Address:" | awk '{print $2}')
@@ -90,7 +90,7 @@ get_dns_ip() {
             exit 1
             ;;
     esac
-    
+
     if [ -z "$dns_ip" ]; then
         log_message "Error: Could not resolve DNS $record_type record for $domain"
         exit 1
@@ -103,7 +103,7 @@ do_curl_update() {
     domain="$1"
     current_ip="$2"
     update_url=$(echo "$DYNDNS_URL_TEMPLATE" | sed "s/%domain%/${domain}/g; s/%ip%/${current_ip}/g")
-    
+
     if [ $DRY_RUN -eq 1 ]; then
         echo "DRY RUN: curl -w \"\\n%{http_code}\" $CURL_OPTS \"$update_url\""
         log_message "DRY RUN: curl -w \"\\n%{http_code}\" $CURL_OPTS \"$update_url\""
@@ -112,16 +112,16 @@ do_curl_update() {
         # Use -w to get HTTP status code
         response=$(curl -w "\n%{http_code}" $CURL_OPTS "$update_url")
         return_code=$?
-        
+
         # Extract status code (last line) and response body
         http_code=$(echo "$response" | tail -n1)
         response_body=$(echo "$response" | sed '$d')
-        
+
         if [ $return_code -ne 0 ]; then
-            log_message "Error: curl failed for ${domain} with return code ${return_code}"
+            log_message "Error: curl failed for ${domain} with return code ${return_code}. URL that was used: ${update_url}"
             return $return_code
         elif [ "$http_code" != "200" ]; then
-            log_message "Error: update failed for ${domain} with HTTP status ${http_code}: ${response_body}"
+            log_message "Error: update failed for ${domain} with HTTP status ${http_code}: ${response_body}. URL that was used: ${update_url}"
             return 1
         else
             log_message "Successfully updated ${domain} to IP ${current_ip}"
@@ -137,7 +137,7 @@ update_domains() {
     domains_to_update="$3" # Space-separated list of domains
     success=0
     failed=0
-    
+
     if [ -n "$domains_to_update" ]; then
         log_message "Updating $ip_type records for the following domains: $domains_to_update"
         for domain in $domains_to_update; do
@@ -162,7 +162,7 @@ update_domains() {
                     ;;
             esac
         done
-        
+
         # Log summary of updates
         if [ $failed -eq 0 ]; then
             log_message "All ${success} $ip_type domain(s) updated successfully"
@@ -181,11 +181,11 @@ update_domains() {
 main4() {
     wan_ip=$(get_wan_ip)
     domains_to_update=""
-    
+
     # Check each domain's current IP
     for domain in $IPV4_DOMAINS; do
         dns_ip=$(get_dns_ip "$domain" "A")
-        
+
         if [ "$wan_ip" = "$dns_ip" ]; then
             log_message "IP addresses match for ${domain} (${wan_ip}). No update needed."
         else
@@ -193,7 +193,7 @@ main4() {
             domains_to_update="$domains_to_update $domain"
         fi
     done
-    
+
     # Update domains with IPv4 addresses
     if [ -n "$domains_to_update" ]; then
         update_domains "v4" "$wan_ip" "$domains_to_update"
@@ -206,11 +206,11 @@ main4() {
 main6_ip() {
     wan6_ip=$(get_wan6_ip)
     domains_to_update_ip=""
-    
+
     # Check each domain that should point to WAN6 IP
     for domain in $IPV6_DOMAINS; do
         dns_ip=$(get_dns_ip "$domain" "AAAA")
-        
+
         if [ "$wan6_ip" = "$dns_ip" ]; then
             log_message "IPv6 addresses match for ${domain} (${wan6_ip}). No update needed."
         else
@@ -218,7 +218,7 @@ main6_ip() {
             domains_to_update_ip="$domains_to_update_ip $domain"
         fi
     done
-    
+
     # Update domains with direct IP
     if [ -n "$domains_to_update_ip" ]; then
         update_domains "v6" "$wan6_ip" "$domains_to_update_ip"
@@ -231,19 +231,19 @@ main6_ip() {
 main6_prefix() {
     wan6_prefix=$(get_wan6_prefix)
     domains_to_update_prefix=""
-    
+
     # Check each domain's current IPv6 prefix mapping
     for ipv6_entry in $IPV6_MAPPINGS; do
         domain=$(echo "$ipv6_entry" | cut -d'/' -f1)
         interface_id=$(echo "$ipv6_entry" | cut -d'/' -f2)
         dns_ip=$(get_dns_ip "$domain" "AAAA")
-        
+
         # Extract prefix from DNS AAAA record (everything before last 4 segments)
         dns_prefix=$(echo "$dns_ip" | sed -E 's/:[^:]*:[^:]*:[^:]*:[^:]*$//')
-        
+
         # Extract prefix from WAN6 prefix (remove prefix length and trailing colons)
         current_prefix=$(echo "$wan6_prefix" | cut -d'/' -f1 | sed 's/::$//')
-        
+
         if [ "$current_prefix" = "$dns_prefix" ]; then
             log_message "IPv6 prefixes match for ${domain} (${current_prefix}). No update needed."
         else
@@ -251,7 +251,7 @@ main6_prefix() {
             domains_to_update_prefix="$domains_to_update_prefix $ipv6_entry"
         fi
     done
-    
+
     # Update domains with prefix mappings
     if [ -n "$domains_to_update_prefix" ]; then
         update_domains "v6_prefix" "$current_prefix" "$domains_to_update_prefix"
@@ -264,13 +264,13 @@ main6_prefix() {
 main() {
     main4
     main4_result=$?
-    
+
     main6_ip
     main6_ip_result=$?
-    
+
     main6_prefix
     main6_prefix_result=$?
-    
+
     # Return failure if any update failed
     [ $main4_result -eq 0 ] && [ $main6_ip_result -eq 0 ] && [ $main6_prefix_result -eq 0 ]
     return $?
