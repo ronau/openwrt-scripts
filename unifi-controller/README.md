@@ -112,6 +112,8 @@ podman create \
         --replace \
         --volume /opt/unifi-controller/unifi-data/:/config \
         --requires mongodb \
+        --env PUID=0 \
+        --env PGID=0 \
         --env TZ=Etc/UTC \
         --env MEM_LIMIT=1024 \
         --env MONGO_USER=$MONGO_USERNAME \
